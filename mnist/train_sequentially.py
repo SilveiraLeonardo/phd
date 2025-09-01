@@ -1,8 +1,9 @@
-from utils.utils import plot_random_digits, plot_batch_with_preds, load_mnist_and_generate_splits
+from utils.utils import plot_random_digits, plot_batch_with_preds, plot_tsne, load_mnist_and_generate_splits
 from models.models import LeNet5
 from datasets.datasets import MNISTDataset
 
 import numpy as np
+from sklearn.manifold import TSNE
 
 import torch
 import torch.nn as nn
@@ -33,10 +34,6 @@ train_ds = MNISTDataset(x_train, y_train, transform)
 val_ds = MNISTDataset(x_val, y_val, transform)
 test_ds = MNISTDataset(x_test, y_test, transform)
 
-#train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
-val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
-test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False)
-
 # define the 5 class-incremental tasks
 tasks = [
     [1, 2],
@@ -65,6 +62,87 @@ model = LeNet5()
 optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
 criterion = nn.CrossEntropyLoss()
 
-# keep track
+# keep track of the classes seen so far
+seen = []
+
+# start task_id from 1
+for task_id, task_classes in enumerate(tasks, 1):
+
+    print(f"task {task_id}, {task_classes}")
+    
+    seen += task_classes
+
+    # train loader only uses two classes at a time
+    train_loader = make_task_loader(train_ds, task_classes, batch_size, shuffle=True)
+    # val and test loaders uses all classes seen so far
+    val_loader = make_task_loader(val_ds, seen, batch_size, shuffle=False)
+    test_loader = make_task_loader(test_ds, seen, batch_size, shuffle=False)
+
+    for epoch in range(epochs):
+    
+        model.train()
+        tot_loss, tot_correct, tot_samples = 0.0, 0, 0
+
+        for xb, yb in train_loader:
+
+            optimizer.zero_grad()
+            logits, latent = model(xb)
+            loss = criterion(logits, yb)
+            loss.backward()
+            optimizer.step()
+
+            tot_loss += loss.item() * xb.size(0)
+            preds = logits.argmax(dim = 1)
+            tot_correct += (preds == yb).sum().item()
+            tot_samples += xb.size(0)
+
+        train_loss = tot_loss / tot_samples
+        train_acc = tot_correct / tot_samples
+
+        # validate on all seen classes so far
+        model.eval()
+        
+        val_loss, val_correct, val_samples = 0.0, 0, 0
+        
+        with torch.no_grad():
+            for xb, yb in val_loader:
+                logits, latent = model(xb)
+                loss = criterion(logits, yb)
+                
+                val_loss += loss.item() * xb.size(0)
+                preds = logits.argmax(dim = 1)
+                val_correct += (preds == yb).sum().item()
+                val_samples += xb.size(0)
+
+        val_loss /= val_samples
+        val_acc = val_correct / val_samples
+        
+        print(f"{epoch}, train loss {train_loss:4f}, train acc {train_acc:4f}, val loss {val_loss:4f}, val acc {val_acc:4f}")
+
+    xb, yb = next(iter(test_loader))
+    with torch.no_grad():
+        logits, z = model(xb)
+        preds = logits.argmax(1)
+        plot_batch_with_preds(xb, yb, preds, normalize_mean, normalize_std)
+
+    model.eval()
+    all_latents = []
+    all_labels  = []
+
+    with torch.no_grad():
+        for xb, yb in test_loader:
+            logits, z = model(xb)          # z has shape [batch,84]
+            all_latents.append(z.cpu().numpy())
+            all_labels .append(yb.cpu().numpy())
+
+    all_latents = np.concatenate(all_latents, axis=0)   # [N,84]
+    all_labels  = np.concatenate(all_labels,  axis=0)   # [N,]
+
+    tsne = TSNE(n_components=2, init='pca', random_state=42)
+    latents_2d = tsne.fit_transform(all_latents)  # [N,2]
+    plot_tsne(latents_2d, all_labels, title="MNIST latent space (2D)")
+
+
+
 
 
