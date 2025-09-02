@@ -4,6 +4,7 @@ matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 import numpy as np
 import collections
+import torch
 
 import idx2numpy
 
@@ -58,6 +59,12 @@ def load_mnist_and_generate_splits(n_val=1000, seed=42):
 def unnormalize_batch(x, mean, std):
     return x * std + mean
 
+def unnormalize_batch_three_channels(x, mean, std):
+    # move mean/std to the same device & give them shape (1,C,1,1)
+    mean = torch.tensor(mean, device=x.device).view(1, -1, 1, 1)
+    std  = torch.tensor(std,  device=x.device).view(1, -1, 1, 1)
+    return x * std + mean
+
 def plot_batch_with_preds(x, y_true, y_pred, mean, std, n_rows=2, n_cols=5,
                        figsize=(10, 5), cmap='gray'):
 
@@ -83,6 +90,110 @@ def plot_batch_with_preds(x, y_true, y_pred, mean, std, n_rows=2, n_cols=5,
         ax.imshow(img, cmap=cmap)
         ax.set_title(f"T: {true} P: {pred}", color=color)
         ax.axis('off')
+    plt.tight_layout()
+    plt.show()
+
+def plot_batch_with_topk_probs(x, y_true, y_pred, probs, mean, std, n_cols=5, topk=5,
+                       figsize=(12, 6), cmap='gray'):
+
+    x = unnormalize_batch(x, mean, std).cpu().numpy()
+
+    y_true = y_true.cpu().numpy()
+    y_pred = y_pred.cpu().numpy()
+
+    B = x.shape[0]
+
+    idx = np.random.choice(B, n_cols, replace=False)
+
+    fig, axes = plt.subplots(2, n_cols, figsize=figsize,
+                             gridspec_kw={'height_ratios':[1,1]})
+    for col, i in enumerate(idx):
+        img = x[i].squeeze()   # shape (H,W), because MNIST is single‐channel
+
+        true = y_true[i]
+        pred = y_pred[i]
+        color = 'green' if true == pred else 'red'
+
+        # ---- TOP ROW: the image ----
+        ax_img = axes[0, col]
+        ax_img.imshow(img, cmap=cmap)
+        ax_img.set_title(f"T:{true}  P:{pred}", color=color)
+        ax_img.axis('off')
+
+        # ---- BOTTOM ROW: barplot of top‐k probs ----
+        ax_bar = axes[1, col]
+        # get topk indices & probs
+        pi = probs[i]  # length‐10
+        topk_idx = np.argsort(pi)[-topk:].tolist()[::-1]  # descending
+        topk_vals = pi[topk_idx]
+
+        bars = ax_bar.bar(range(topk), topk_vals, color='lightblue')
+        # highlight the predicted label bar in a different color
+        for b, lbl in zip(bars, topk_idx):
+            if lbl == pred:
+                b.set_color('orange')
+
+        ax_bar.set_xticks(range(topk))
+        ax_bar.set_xticklabels(topk_idx, fontsize=10)
+        ax_bar.set_ylim(0, 1.0)
+        ax_bar.set_ylabel("P", fontsize=10)
+        ax_bar.grid(axis='y', alpha=0.3)
+
+    plt.tight_layout()
+    plt.show()
+
+def plot_batch_with_topk_probs_three_channels(x, y_true, y_pred, probs, mean, std, n_cols=5, topk=5,
+                       figsize=(12, 6), cmap='gray'):
+
+    #x = unnormalize_batch(x, mean, std).cpu().numpy()
+    x = unnormalize_batch_three_channels(x, mean, std).cpu().numpy() # (B, 3, H, W)
+    x = np.clip(x, 0.0, 1.0)
+
+    y_true = y_true.cpu().numpy()
+    y_pred = y_pred.cpu().numpy()
+
+    if torch.is_tensor(probs):
+        probs = probs.cpu().numpy()
+
+    B = x.shape[0]
+
+    idx = np.random.choice(B, n_cols, replace=False)
+
+    fig, axes = plt.subplots(2, n_cols, figsize=figsize,
+                             gridspec_kw={'height_ratios':[1,1]})
+    for col, i in enumerate(idx):
+        #img = x[i].squeeze()   # shape (H,W), because MNIST is single‐channel
+        img = x[i].transpose(1,2,0)   # now (H,W,3)
+
+        true = y_true[i]
+        pred = y_pred[i]
+        color = 'green' if true == pred else 'red'
+
+        # ---- TOP ROW: the image ----
+        ax_img = axes[0, col]
+        ax_img.imshow(img, cmap=cmap)
+        ax_img.set_title(f"T:{true}  P:{pred}", color=color)
+        ax_img.axis('off')
+
+        # ---- BOTTOM ROW: barplot of top‐k probs ----
+        ax_bar = axes[1, col]
+        # get topk indices & probs
+        pi = probs[i]  # length‐10
+        topk_idx = np.argsort(pi)[-topk:].tolist()[::-1]  # descending
+        topk_vals = pi[topk_idx]
+
+        bars = ax_bar.bar(range(topk), topk_vals, color='lightblue')
+        # highlight the predicted label bar in a different color
+        for b, lbl in zip(bars, topk_idx):
+            if lbl == pred:
+                b.set_color('orange')
+
+        ax_bar.set_xticks(range(topk))
+        ax_bar.set_xticklabels(topk_idx, fontsize=10)
+        ax_bar.set_ylim(0, 1.0)
+        ax_bar.set_ylabel("P", fontsize=10)
+        ax_bar.grid(axis='y', alpha=0.3)
+
     plt.tight_layout()
     plt.show()
 
@@ -122,3 +233,47 @@ def plot_tsne(latents_2d, all_labels, title="MNIST latent space (2D)"):
     plt.ylabel("dim 2")
     plt.grid(False)
     plt.show()
+
+def plot_accuracies(line1, line2, line1_title='Current Task', line2_title='Previous Task',
+                    xlabel='Batch # in Epoch 0', ylabel='Accuracy', 
+                    title='Batch-wise Accuracy: Current vs. Previous Task'):
+
+    batches = list(range(1, len(line1) + 1))
+
+    plt.figure(figsize=(6,4))
+    plt.plot(batches, line1,  marker='o', label=line1_title)
+    plt.plot(batches, line2,  marker='s', label=line2_title)
+
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.title(title)
+    plt.xticks(batches)           # show each batch on the x-axis
+    plt.ylim(0,1)                 # accuracy between 0 and 1
+    plt.grid(True, linestyle='--', alpha=0.5)
+    plt.legend()
+
+    plt.tight_layout()
+    plt.show()
+
+def plot_weight_norm(layer_stats):
+
+    plt.figure(figsize=(10,6))
+
+    for name, history in layer_stats.items():
+        plt.plot(history, label=name)
+
+    plt.yscale('log')
+    plt.xlabel("Batch index")
+    plt.ylabel("Relative ‖Δw‖/‖w‖ (log scale)")
+    plt.title("Per-layer relative update norms over batches")
+    plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left", fontsize="small")
+    plt.tight_layout()
+    plt.show()
+
+
+
+
+
+
+
+
