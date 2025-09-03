@@ -62,7 +62,7 @@ acc_list_ab = []
 
 print('starting AC training...')
 
-epochs *= 2
+epochs *= 3
 
 for epoch in range(epochs):
 
@@ -92,4 +92,33 @@ for epoch in range(epochs):
     acc_list_ac.append(correct_ac)
     acc_list_ab.append(correct_ab)
 
-plot_accuracies(acc_list_ac, acc_list_ab)
+#plot_accuracies(acc_list_ac, acc_list_ab)
+
+AB_loader_t = DataLoader(AB_list_dataset, batch_size=1, shuffle=False)
+AC_loader_t = DataLoader(AC_list_dataset, batch_size=1, shuffle=False)
+
+AB_example_x, AB_example_y = next(iter(AB_loader_t))
+AC_example_x, AC_example_y = next(iter(AC_loader_t))
+
+logits = model(AB_example_x)
+preds_probs = torch.sigmoid(logits)
+preds_AB = (preds_probs > 0.5).float()[0].tolist()
+
+logits = model(AC_example_x)
+preds_probs = torch.sigmoid(logits)
+preds_AC = (preds_probs > 0.5).float()[0].tolist()
+
+print("AC input:")
+print(AC_example_x[0].tolist())
+print("AC output:")
+print(preds_AC)
+print("AC target:")
+print(AC_example_y[0].tolist())
+print(" ")
+print("AB input:")
+print(AB_example_x[0].tolist())
+print("AB output:")
+print(preds_AB)
+print("AB target:")
+print(AB_example_y[0].tolist())
+

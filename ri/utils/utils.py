@@ -43,6 +43,8 @@ def plot_curve(line, xlabel='Epoch', ylabel='Loss'):
 
     plt.tight_layout()
 
+    plt.show()
+
 def plot_accuracies(line1, line2, line1_title='Current Task', line2_title='Previous Task',
                     xlabel='Epoch #', ylabel='Accuracy', 
                     title='Accuracy: Current vs. Previous Task'):
@@ -56,11 +58,9 @@ def plot_accuracies(line1, line2, line1_title='Current Task', line2_title='Previ
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
     plt.title(title)
-    plt.xticks(batches)           # show each batch on the x-axis
     plt.ylim(0,1)                 # accuracy between 0 and 1
     plt.grid(True, linestyle='--', alpha=0.5)
     plt.legend()
 
     plt.tight_layout()
-    plt.show()
     plt.show()
