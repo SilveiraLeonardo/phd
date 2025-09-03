@@ -93,7 +93,7 @@ with torch.no_grad():
 all_latents = np.concatenate(all_latents, axis=0)   # [N,84]
 all_labels  = np.concatenate(all_labels,  axis=0)   # [N,]
 
-tsne = TSNE(n_components=2, perplexity=5.0, init='pca', random_state=42)
+tsne = TSNE(n_components=2, init='pca', random_state=42)
 latents_2d = tsne.fit_transform(all_latents)  # [N,2]
 
 plot_tsne(latents_2d, all_labels, title="MNIST latent space (2D)")
