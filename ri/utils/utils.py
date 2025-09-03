@@ -64,3 +64,23 @@ def plot_accuracies(line1, line2, line1_title='Current Task', line2_title='Previ
 
     plt.tight_layout()
     plt.show()
+
+def plot_tsne(latents_2d, all_labels, title="Latent space (2D)"):
+
+    plt.figure(figsize=(8,8))
+    sc = plt.scatter(latents_2d[:,0],
+                     latents_2d[:,1],
+                     c=all_labels,
+                     cmap='tab10',
+                     s=50,
+                     alpha=0.7)
+    plt.legend(*sc.legend_elements(), title="classes")
+    plt.title(title)
+    plt.xlabel("dim 1")
+    plt.ylabel("dim 2")
+    plt.grid(False)
+    plt.show()
+
+
+
+

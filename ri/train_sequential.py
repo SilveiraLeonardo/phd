@@ -1,4 +1,4 @@
-from utils.utils import generate_patterns, plot_curve, plot_accuracies 
+from utils.utils import generate_patterns, plot_curve, plot_tsne, plot_accuracies 
 from models.models import MLP
 from datasets.datasets import RIDataset
 
@@ -6,16 +6,18 @@ from torch.utils.data import DataLoader
 import torch.nn as nn
 import torch
 
+from sklearn.manifold import TSNE
+
 seed = 42
 
-lr = 0.1
-epochs = 20
+lr = 0.01
+epochs = 70
 
 AB_inputs, AC_inputs, AB_pairs, AC_pairs = generate_patterns(seed=seed)
 
 ABC_pairs = AB_pairs + AC_pairs 
 
-#ABC_list_dataset = RIDataset(ABC_pairs)
+ABC_list_dataset = RIDataset(ABC_pairs)
 AB_list_dataset = RIDataset(AB_pairs)
 AC_list_dataset = RIDataset(AC_pairs)
 
@@ -62,7 +64,7 @@ acc_list_ab = []
 
 print('starting AC training...')
 
-epochs *= 3
+epochs *= 2
 
 for epoch in range(epochs):
 
@@ -92,10 +94,10 @@ for epoch in range(epochs):
     acc_list_ac.append(correct_ac)
     acc_list_ab.append(correct_ab)
 
-#plot_accuracies(acc_list_ac, acc_list_ab)
+plot_accuracies(acc_list_ac, acc_list_ab)
 
-AB_loader_t = DataLoader(AB_list_dataset, batch_size=1, shuffle=False)
-AC_loader_t = DataLoader(AC_list_dataset, batch_size=1, shuffle=False)
+AB_loader_t = DataLoader(AB_list_dataset, batch_size=2, shuffle=False)
+AC_loader_t = DataLoader(AC_list_dataset, batch_size=2, shuffle=False)
 
 AB_example_x, AB_example_y = next(iter(AB_loader_t))
 AC_example_x, AC_example_y = next(iter(AC_loader_t))
@@ -121,4 +123,36 @@ print("AB output:")
 print(preds_AB)
 print("AB target:")
 print(AB_example_y[0].tolist())
+print(" ")
 
+preds_AB = (preds_probs > 0.5).float()[1].tolist()
+preds_AC = (preds_probs > 0.5).float()[1].tolist()
+print("AC input:")
+print(AC_example_x[1].tolist())
+print("AC output:")
+print(preds_AC)
+print("AC target:")
+print(AC_example_y[1].tolist())
+print(" ")
+print("AB input:")
+print(AB_example_x[1].tolist())
+print("AB output:")
+print(preds_AB)
+print("AB target:")
+print(AB_example_y[1].tolist())
+
+loader = DataLoader(ABC_list_dataset, batch_size=len(ABC_pairs), shuffle=False)
+x, y = next(iter(loader))
+
+classes = [0] * 8 + [1] * 8
+
+latent = None
+
+#with torch.no_grad():
+#    logits = model(x)
+#    latent = model.h1
+
+#tsne = TSNE(n_components=2, perplexity=5.0, init='pca', random_state=42)
+#latents_2d = tsne.fit_transform(latent)  # [N,2]
+
+#plot_tsne(latents_2d, classes)

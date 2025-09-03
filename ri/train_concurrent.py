@@ -1,4 +1,4 @@
-from utils.utils import generate_patterns, plot_curve 
+from utils.utils import generate_patterns, plot_curve, plot_tsne 
 from models.models import MLP
 from datasets.datasets import RIDataset
 
@@ -6,9 +6,11 @@ from torch.utils.data import DataLoader
 import torch.nn as nn
 import torch
 
+from sklearn.manifold import TSNE
+
 seed = 42
 
-lr = 0.1
+lr = 0.05
 epochs = 40
 
 AB_inputs, AC_inputs, AB_pairs, AC_pairs = generate_patterns(seed=seed)
@@ -56,4 +58,22 @@ print(preds_probs[0])
 
 plot_curve(loss_list)
 plot_curve(acc_list)
+
+loader = DataLoader(ABC_list_dataset, batch_size=len(ABC_pairs), shuffle=False)
+x, y = next(iter(loader))
+
+classes = [0] * 8 + [1] * 8
+
+latent = None
+
+#with torch.no_grad():
+#    logits = model(x)
+#    latent = model.h1
+
+#tsne = TSNE(n_components=2, perplexity=5.0, init='pca', random_state=42)
+#latents_2d = tsne.fit_transform(latent)  # [N,2]
+
+#plot_tsne(latents_2d, classes)
+
+
 
