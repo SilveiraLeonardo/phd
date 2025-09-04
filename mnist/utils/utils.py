@@ -270,8 +270,30 @@ def plot_weight_norm(layer_stats):
     plt.tight_layout()
     plt.show()
 
+def plot_color_map(data1, data2, title1="Hidden 1", title2="Hidden 2"):
 
+    # Heat map
+    fig, (ax1, ax2) = plt.subplots(
+        nrows=2, 
+        ncols=1, 
+        figsize=(6,8), 
+        constrained_layout=True)
 
+    # use the same vmin and vmax colors to be comparable
+    vmin = min(data1.min(), data2.min())
+    vmax = max(data1.max(), data2.max())
+
+    im1 = ax1.imshow(data1, vmin=vmin, vmax=vmax, aspect="auto")
+    ax1.set_title(title1)
+
+    im2 = ax2.imshow(data2, vmin=vmin, vmax=vmax, aspect="auto")
+    ax2.set_title(title2)
+    
+    # Add the color bar
+    cbar = fig.colorbar(im2, ax = [ax1, ax2], orientation="vertical", fraction=0.02, pad=0.04)
+    cbar.ax.set_ylabel("Shared color bar", rotation = -90, va = "bottom")
+
+    plt.show()
 
 
 
