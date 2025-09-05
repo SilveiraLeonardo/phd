@@ -11,15 +11,70 @@ import torch.nn.functional as F
 from torchvision import transforms
 from torch.utils.data import DataLoader, Subset
 
+# orthogonal gradient descen
+class OGDProjector:
+    def __init__(self, model, eps=1e-8):
+        self.model = model
+        # list of torch tensors, each is a unit-norm flattened gradient
+        self.basis = []
+        self.eps = eps
+
+    def __len__(self):
+        return len(self.basis)
+    
+    def _flatten_grads(self):
+        flats = []
+        for p in self.model.parameters():
+            if p.grad is not None:
+                flats.append(p.grad.detach().view(-1))
+        if len(flats) == 0:
+            return None
+        return torch.cat(flats)
+
+    def register_task_gradients(self):
+        # call after finishing a task
+        g = self._flatten_grads()
+        if g is None:
+            return
+        # Gram-Schmidt against existing basis
+        for b in self.basis:
+            # for each basis vector
+            # subtract from g the components in the direction of b, for each b
+            # so that the vectors in g only have the orthogonal components now
+            g -= b * (b @ g)
+        ng = g.norm()
+        if ng.item() > self.eps:
+            self.basis.append(g / ng)
+
+    def project_current_gradients(self):
+        # call after loss.backward() and before optimizer.step()
+        grads = self._flatten_grads()
+        if grads is None or len(self.basis) == 0:
+            return
+        # project grads onto orthogonal complement of the basis
+        g = grads.clone()
+        for b in self.basis:
+            g -= b * (b @ g)
+
+        # write g back into parameter gradients
+        idx = 0
+        for p in self.model.parameters():
+            if p.grad is not None:
+                numel = p.grad.numel() # total number of elements in the tensor
+                new_grad = g[idx:idx+numel].view_as(p.grad)
+                p.grad.data.copy_(new_grad)
+                idx += numel
+
 seed = 42
 
 # parameters
-lr = 1e-3
-epochs = 5
+lr = 1e-4
+epochs = 30 #5
 batch_size = 64
 n_val = 10000 # size of validation set
 normalize_mean = 0.1307
 normalize_std = 0.3081
+grads_stored = 200
 
 x_train, y_train, x_val, y_val, x_test, y_test = load_mnist_and_generate_splits(n_val=n_val, seed=seed)
 
@@ -59,10 +114,13 @@ def make_task_loader(full_ds, target_classes, batch_size=64, shuffle=True):
 
 model = MLPSparse()
 
+ogd = OGDProjector(model)
+
+#optimizer = torch.optim.SGD(model.parameters(), lr=lr)
 optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
 criterion = nn.CrossEntropyLoss()
 
-lambda_l1 = 0.0
+lambda_l1 = 5.0
 print(f"lambda L1: {lambda_l1}")
 
 # keep track of the classes seen so far
@@ -86,6 +144,10 @@ for task_id, task_classes in enumerate(tasks, 1):
         curr_loader = make_task_loader(val_ds, task_classes, batch_size, shuffle=False)
         prev_loader = make_task_loader(val_ds, previous, batch_size, shuffle=False)
 
+    if previous is not None:
+        for group in optimizer.param_groups:
+            group['lr'] = lr / 5
+
     for epoch in range(epochs):
     
         model.train()
@@ -107,6 +169,9 @@ for task_id, task_classes in enumerate(tasks, 1):
             loss = base_loss + lambda_l1 * l1_norm
 
             loss.backward()
+
+            ogd.project_current_gradients()
+
             optimizer.step()
 
             tot_loss += loss.item() * xb.size(0)
@@ -177,10 +242,38 @@ for task_id, task_classes in enumerate(tasks, 1):
         val_acc = val_correct / val_samples
         
         print(f"{epoch}, train loss {train_loss:4f}, train acc {train_acc:4f}, val loss {val_loss:4f}, val acc {val_acc:4f}")
-        
-        if train_acc > 0.98:
-            print("Accuracy larger than 0.98, breaking from training...")
+
+        if train_acc > 0.95:
+            print("Accuracy larger than 0.95, breaking from training...")
             break
+
+    # register a prototype gradient for the class
+    model.train()
+    print("registering gradients for the task")
+    running_g = 0
+    count = 0
+    for idx, (xb, yb, _) in enumerate(train_loader):
+
+        optimizer.zero_grad()
+        logits, _ = model(xb)
+        loss = criterion(logits, yb)
+        loss.backward()
+
+        flat_g = ogd._flatten_grads()
+        running_g += flat_g
+        count += 1
+        #ogd.register_task_gradients()
+            
+    running_g /= float(count)
+
+    # Gram-Schmidt
+    for b in ogd.basis:
+        running_g -= b * (b @ running_g)
+    ng = running_g.norm()
+    if ng > ogd.eps:
+       ogd.basis.append(running_g / ng)
+
+    print(f"{len(ogd)} gradients stored")
 
 
     xb, yb, xb_images = next(iter(test_loader))

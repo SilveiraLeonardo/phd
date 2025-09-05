@@ -41,7 +41,7 @@ model = MLPSparse()
 optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.0)
 criterion = nn.CrossEntropyLoss()
 
-lambda_l1 = 1.0
+lambda_l1 = 0.0
 print(f"lambda L1: {lambda_l1}")
 
 # training loop

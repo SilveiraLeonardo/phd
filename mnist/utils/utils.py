@@ -124,6 +124,12 @@ def plot_batch_with_topk_probs(x, y_true, y_pred, probs, mean, std, n_cols=5, to
         ax_bar = axes[1, col]
         # get topk indices & probs
         pi = probs[i]  # length‐10
+
+        #print("-----")
+        #print(true)
+        #print(pi[true])
+        #print(pi)
+
         topk_idx = np.argsort(pi)[-topk:].tolist()[::-1]  # descending
         topk_vals = pi[topk_idx]
 
@@ -142,8 +148,7 @@ def plot_batch_with_topk_probs(x, y_true, y_pred, probs, mean, std, n_cols=5, to
     plt.tight_layout()
     plt.show()
 
-def plot_batch_with_topk_probs_three_channels(x, y_true, y_pred, probs, mean, std, n_cols=5, topk=5,
-                       figsize=(12, 6), cmap='gray'):
+def plot_batch_with_topk_probs_three_channels(x, y_true, y_pred, probs, mean, std, n_cols=5, topk=5, figsize=(12, 6), cmap='gray'):
 
     #x = unnormalize_batch(x, mean, std).cpu().numpy()
     x = unnormalize_batch_three_channels(x, mean, std).cpu().numpy() # (B, 3, H, W)
@@ -179,6 +184,7 @@ def plot_batch_with_topk_probs_three_channels(x, y_true, y_pred, probs, mean, st
         ax_bar = axes[1, col]
         # get topk indices & probs
         pi = probs[i]  # length‐10
+
         topk_idx = np.argsort(pi)[-topk:].tolist()[::-1]  # descending
         topk_vals = pi[topk_idx]
 
