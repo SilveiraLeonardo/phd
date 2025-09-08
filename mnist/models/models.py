@@ -50,17 +50,36 @@ class MLPSparse(nn.Module):
         super().__init__()
 
         self.fc1 = nn.Linear(input_dim, 120)
-        self.bn1 = nn.BatchNorm1d(120)
-        self.drop1 = nn.Dropout(prob)
+        #self.bn1 = nn.BatchNorm1d(120)
+        #self.drop1 = nn.Dropout(prob)
         self.fc2 = nn.Linear(120, 84)
-        self.bn2 = nn.BatchNorm1d(84)
-        self.drop2 = nn.Dropout(prob)
+        #self.bn2 = nn.BatchNorm1d(84)
+        #self.drop2 = nn.Dropout(prob)
         self.fc3 = nn.Linear(84, n_classes)
 
     def forward(self, x):
 
-        h1 = self.drop1(F.relu(self.bn1(self.fc1(x))))
-        h2 = self.drop2(F.relu(self.bn2(self.fc2(h1))))
+        h1 = F.relu(self.fc1(x))
+        h2 = F.relu(self.fc2(h1))
+        logits = self.fc3(h2)
+        return logits, (h1, h2)
+
+class MLPSparseBN(nn.Module):
+    def __init__(self, input_dim=784, n_classes=10, prob=0.2):
+        super().__init__()
+
+        self.fc1 = nn.Linear(input_dim, 120, bias=False)
+        self.bn1 = nn.BatchNorm1d(120)
+        #self.drop1 = nn.Dropout(prob)
+        self.fc2 = nn.Linear(120, 84, bias=False)
+        self.bn2 = nn.BatchNorm1d(84)
+        #self.drop2 = nn.Dropout(prob)
+        self.fc3 = nn.Linear(84, n_classes)
+
+    def forward(self, x):
+
+        h1 = F.relu(self.bn1(self.fc1(x)))
+        h2 = F.relu(self.bn2(self.fc2(h1)))
         logits = self.fc3(h2)
         return logits, (h1, h2)
 

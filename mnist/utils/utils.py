@@ -295,13 +295,216 @@ def plot_color_map(data1, data2, title1="Hidden 1", title2="Hidden 2"):
     im2 = ax2.imshow(data2, vmin=vmin, vmax=vmax, aspect="auto")
     ax2.set_title(title2)
     
+    ax1.set_ylabel("Batch samples")
+    ax1.set_xlabel("Latent vector")
+
+    ax2.set_ylabel("Batch samples")
+    ax2.set_xlabel("Latent vector")
+    
     # Add the color bar
     cbar = fig.colorbar(im2, ax = [ax1, ax2], orientation="vertical", fraction=0.02, pad=0.04)
     cbar.ax.set_ylabel("Shared color bar", rotation = -90, va = "bottom")
 
     plt.show()
 
+def plot_three_color_map(data1, data2, data3, title1="Layer 1", title2="Layer 2", title3="Layer 3"):
+
+    # Heat map
+    fig, (ax1, ax2, ax3) = plt.subplots(
+        nrows=3, 
+        ncols=1, 
+        figsize=(6,10), 
+        constrained_layout=True)
+
+    # use the same vmin and vmax colors to be comparable
+    #vmin = min(data1.min(), data2.min(), data3.min())
+    #vmax = max(data1.max(), data2.max(), data3.max())
+
+    im1 = ax1.imshow(data1, aspect="auto")
+    ax1.set_title(title1)
+
+    im2 = ax2.imshow(data2,  aspect="auto")
+    ax2.set_title(title2)
+    
+    im3 = ax3.imshow(data3,  aspect="auto")
+    ax3.set_title(title3)
+    
+    #ax1.set_ylabel("Batch samples")
+    #ax1.set_xlabel("Latent vector")
+
+    #ax2.set_ylabel("Batch samples")
+    #ax2.set_xlabel("Latent vector")
+    
+    # Add the color bar
+    fig.colorbar(im1, ax = [ax1], orientation="vertical", fraction=0.02, pad=0.04)
+    fig.colorbar(im2, ax = [ax2], orientation="vertical", fraction=0.02, pad=0.04)
+    fig.colorbar(im3, ax = [ax3], orientation="vertical", fraction=0.02, pad=0.04)
+
+    plt.show()
+
+def plot_histogram(biases,
+                        bins=50,
+                        density=True,
+                        y_log=False,
+                        color='C0',
+                        alpha=0.7,
+                        show_mean=True,
+                        show_median=True,
+                        title="Histogram of Bias Values",
+                        xlabel="Bias value",
+                        ylabel=None):
+
+    biases = np.asarray(biases).ravel()
+    mean = biases.mean()
+    median = np.median(biases)
+
+    if ylabel is None:
+        ylabel = "Density" if density else "Count"
+
+    plt.figure(figsize=(8, 5))
+    plt.hist(biases,
+             bins=bins,
+             density=density,
+             color=color,
+             alpha=alpha,
+             edgecolor='black')
+    
+    if show_mean:
+        plt.axvline(mean,
+                    color='red',
+                    linestyle='--',
+                    linewidth=2,
+                    label=f"Mean = {mean:.3f}")
+    if show_median:
+        plt.axvline(median,
+                    color='green',
+                    linestyle='-.',
+                    linewidth=2,
+                    label=f"Median = {median:.3f}")
+
+    plt.title(title)
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    if y_log:
+        plt.yscale('log')
+    plt.grid(True, linestyle=':', alpha=0.5)
+    plt.legend()
+    plt.tight_layout()
+
+    plt.show()
+
+def plot_two_histograms(biases1, biases2=None,
+                        bins=50,
+                        density=True,
+                        y_log=False,
+                        colors=('C0', 'C1'),
+                        alphas=(0.7, 0.7),
+                        show_mean=True,
+                        show_median=True,
+                        titles=None,
+                        xlabel="Bias value",
+                        ylabel=None,
+                        figsize=(12, 5)):
 
 
+    # Prepare data
+    data = [np.asarray(biases1).ravel()]
+    if biases2 is not None:
+        data.append(np.asarray(biases2).ravel())
+
+    n_plots = len(data)
+
+    # Shared ylabel
+    if ylabel is None:
+        ylabel = "Density" if density else "Count"
+
+    # Default titles
+    if titles is None and n_plots == 2:
+        titles = ("Histogram 1", "Histogram 2")
+    elif titles is None:
+        titles = ("Histogram",)
+
+    # Set up subplots
+    fig, axes = plt.subplots(1, n_plots, figsize=figsize, sharey=True)
+    if n_plots == 1:
+        axes = [axes]
+
+    for ax, arr, color, alpha, title in zip(axes, data, colors, alphas, titles):
+        m = arr.mean()
+        med = np.median(arr)
+
+        ax.hist(arr,
+                bins=bins,
+                density=density,
+                color=color,
+                alpha=alpha,
+                edgecolor='black')
+        if show_mean:
+            ax.axvline(m,
+                       color='red',
+                       linestyle='--',
+                       linewidth=2,
+                       label=f"Mean = {m:.3f}")
+        if show_median:
+            ax.axvline(med,
+                       color='green',
+                       linestyle='-.',
+                       linewidth=2,
+                       label=f"Median = {med:.3f}")
+
+        ax.set_title(title)
+        ax.set_xlabel(xlabel)
+        ax.grid(True, linestyle=':', alpha=0.5)
+        if y_log:
+            ax.set_yscale('log')
+        ax.legend()
+
+    # only set ylabel on the first subplot
+    axes[0].set_ylabel(ylabel)
+    plt.tight_layout()
+    plt.show()
+
+def plot_class_strength(representation_strength, seen_counts):
+
+    num_tasks = len(seen_counts)
+
+    plt.figure(figsize=(8, 6))
+    for c, acc_list in representation_strength.items():
+        if len(acc_list) == 0:
+            continue
+        # when this class first appeared
+        start_idx = num_tasks - len(acc_list)
+        x = seen_counts[start_idx:]
+        plt.plot(x, acc_list, marker="o", label=f"class {c}")
+    
+    plt.xlabel('Number of classes seen so far')
+    plt.ylabel('Linear‐probe accuracy')
+    plt.title('Evolution of representation strength per class')
+    plt.legend(ncol=2, fontsize='small')
+    plt.grid(True)
+    plt.show()
+
+def print_representation_strength_table(representation_strength, classifier_acc, num_tasks=5):
+
+    # 1) Print header
+    header = "| Accuracy    | " + " | ".join(f"Task {i+1}" for i in range(num_tasks)) + " |"
+    sep    = "|------------|" + "|".join( "--------- " for _ in range(num_tasks)) + "|"
+
+    print(header)
+    print(sep)
+
+    # 2) Classifier row
+    row = "| Classifier | " + " | ".join(f"{a:.4f}" for a in classifier_acc) + " |"
+    print(row)
+
+    # 3) Each class row
+    for c in range(10):
+        vals = []
+        for i in range(num_tasks):
+            if i < len(representation_strength[c]):
+                vals.append(f"{representation_strength[c][i]:.4f}")
+            else:
+                vals.append("")   # or "-" if you prefer a dash
+        print(f"| Class {c}    | " + " | ".join(vals) + " |")
 
 

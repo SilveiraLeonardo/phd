@@ -1,4 +1,4 @@
-from utils.utils import plot_random_digits, plot_batch_with_preds, load_mnist_and_generate_splits, plot_tsne, plot_color_map
+from utils.utils import plot_random_digits, plot_batch_with_preds, load_mnist_and_generate_splits, plot_tsne, plot_color_map, plot_histogram
 from models.models import MLPSparse 
 from datasets.datasets import FlatMNISTDataset
 import torch
@@ -14,7 +14,7 @@ seed = 42
 
 # parameters
 lr = 1e-3
-epochs = 5 #10
+epochs = 5
 n_val = 10000 # size of validation set
 normalize_mean = 0.1307
 normalize_std = 0.3081
@@ -99,6 +99,47 @@ all_labels  = []
 
 total_size = 0
 num_zeros = 0
+
+weights = []
+biases = []
+idx = 0
+for param in model.parameters():
+    if (param.ndim == 2):
+        weights += param.detach().cpu().view(-1).numpy().tolist()
+
+    if (param.ndim == 1):
+
+        idx += 1
+
+        layer_bias = param.detach().cpu().numpy().tolist()
+        biases += layer_bias
+
+        #plot_histogram(layer_bias,
+        #                    bins=40,
+        #                    density=False,
+        #                    y_log=False,
+        #                    color='C2',
+        #                    show_median=False,
+        #                    title=f"Bias Distribution, layer {idx}")
+
+bias_std = np.std(np.array(biases))
+plot_histogram(biases,
+                    bins=40,
+                    density=False,
+                    y_log=False,
+                    color='C2',
+               title=f"Bias Distribution - std {bias_std:.4f}")
+
+weights_std = np.std(np.array(weights))
+plot_histogram(weights,
+                    bins=40,
+                    density=False,
+                    y_log=False,
+                    color='C2',
+               title=f"Weight Distribution - std {weights_std:.4f}",
+                    xlabel="Weight value"
+               )
+
 
 with torch.no_grad():
     for idx, (xb, yb, _) in enumerate(test_loader):
