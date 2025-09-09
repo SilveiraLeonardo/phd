@@ -253,7 +253,8 @@ def plot_accuracies(line1, line2, line1_title='Current Task', line2_title='Previ
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
     plt.title(title)
-    plt.xticks(batches)           # show each batch on the x-axis
+    if len(line1) < 70:
+        plt.xticks(batches)           # show each batch on the x-axis
     plt.ylim(0,1)                 # accuracy between 0 and 1
     plt.grid(True, linestyle='--', alpha=0.5)
     plt.legend()
@@ -497,14 +498,30 @@ def print_representation_strength_table(representation_strength, classifier_acc,
     row = "| Classifier | " + " | ".join(f"{a:.4f}" for a in classifier_acc) + " |"
     print(row)
 
-    # 3) Each class row
+    # 3) Per‐class rows
     for c in range(10):
+        acc_list = representation_strength[c]
+        L = len(acc_list)
+
+        # if a class never appeared, just print blanks
+        if L == 0:
+            blanks = ["      "] * num_tasks
+            print(f"| Class {c}    | " + " | ".join(blanks) + " |")
+            continue
+
+        # infer the 0-based index of the first task in which class c appeared:
+        #    first_task = num_tasks - len(acc_list)
+        # e.g. if len=3 and num_tasks=5 ⇒ first_task=2 ⇒ it appeared first in Task 3
+        first_task = num_tasks - L
+
         vals = []
-        for i in range(num_tasks):
-            if i < len(representation_strength[c]):
-                vals.append(f"{representation_strength[c][i]:.4f}")
+        for task_idx in range(num_tasks):
+            if task_idx < first_task:
+                vals.append("      ")            # class c wasn't yet introduced
             else:
-                vals.append("")   # or "-" if you prefer a dash
+                # pick the right entry from acc_list
+                a = acc_list[task_idx - first_task]
+                vals.append(f"{a:.4f}")
         print(f"| Class {c}    | " + " | ".join(vals) + " |")
 
 

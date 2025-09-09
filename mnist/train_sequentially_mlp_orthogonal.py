@@ -1,5 +1,5 @@
-from utils.utils import plot_random_digits, plot_batch_with_preds, plot_tsne, plot_batch_with_topk_probs, load_mnist_and_generate_splits, plot_accuracies, plot_weight_norm, plot_color_map
-from models.models import MLPSparse 
+from utils.utils import plot_random_digits, plot_batch_with_preds, plot_tsne, plot_batch_with_topk_probs, load_mnist_and_generate_splits, plot_accuracies, plot_weight_norm, plot_color_map, plot_class_strength, print_representation_strength_table
+from models.models import MLPSparse, MLPSparseBN 
 from datasets.datasets import FlatMNISTDataset
 
 import numpy as np
@@ -10,6 +10,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import transforms
 from torch.utils.data import DataLoader, Subset
+
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import train_test_split
 
 # orthogonal gradient descen
 class OGDProjector:
@@ -112,7 +115,8 @@ def make_task_loader(full_ds, target_classes, batch_size=64, shuffle=True):
 
     return DataLoader(sub_ds, batch_size=batch_size, shuffle=shuffle)
 
-model = MLPSparse()
+#model = MLPSparse()
+model = MLPSparseBN()
 
 ogd = OGDProjector(model)
 
@@ -120,12 +124,27 @@ ogd = OGDProjector(model)
 optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
 criterion = nn.CrossEntropyLoss()
 
-lambda_l1 = 5.0
+lambda_l1 = 0.0 #5.0
 print(f"lambda L1: {lambda_l1}")
 
 # keep track of the classes seen so far
 seen = []
 previous = None
+
+representation_strength = {
+    0: [],
+    1: [],
+    2: [],
+    3: [],
+    4: [],
+    5: [],
+    6: [],
+    7: [],
+    8: [],
+    9: [],
+}
+seen_counts = []
+classifier_acc = []
 
 # start task_id from 1
 for task_id, task_classes in enumerate(tasks, 1):
@@ -148,15 +167,17 @@ for task_id, task_classes in enumerate(tasks, 1):
         for group in optimizer.param_groups:
             group['lr'] = lr / 5
 
+    curr_acc, prev_acc = [], []
+    show_forgetting_curve = True 
+
     for epoch in range(epochs):
     
         model.train()
         tot_loss, tot_correct, tot_samples = 0.0, 0, 0
 
-        curr_acc, prev_acc = [], []
         layer_stats = {}
 
-        for xb, yb, _ in train_loader:
+        for counter, (xb, yb, _) in enumerate(train_loader):
 
             optimizer.zero_grad()
             
@@ -180,8 +201,8 @@ for task_id, task_classes in enumerate(tasks, 1):
             tot_samples += xb.size(0)
 
             # in the first epoch, plot acc of current and previous task on a batch basis
-            if previous is not None and epoch == 0 and len(curr_acc) <= 30:
-                
+            if previous is not None and counter % 10 == 0 and len(curr_acc) <= 120:
+               
                 with torch.no_grad():
 
                     correct, n_samples = 0, 0
@@ -204,6 +225,7 @@ for task_id, task_classes in enumerate(tasks, 1):
                         
                     prev_acc.append(correct / n_samples)
                 
+            if previous is not None and epoch == 0 and counter <= 30:
                 for name, param in model.named_parameters():
                     if param.ndim > 1: # ignore the bias terms
                         update = -optimizer.param_groups[0]['lr'] * param.grad
@@ -216,9 +238,11 @@ for task_id, task_classes in enumerate(tasks, 1):
                         norm_history.append(relative_norm)
                         layer_stats[name] = norm_history 
 
-        if len(curr_acc) > 0 and len(prev_acc) > 0:
+        if len(curr_acc) > 0 and len(prev_acc) > 0 and show_forgetting_curve:
             plot_accuracies(curr_acc, prev_acc)
             plot_weight_norm(layer_stats)
+            if len(curr_acc) > 120:
+                show_forgetting_curve = False
 
         train_loss = tot_loss / tot_samples
         train_acc = tot_correct / tot_samples
@@ -243,8 +267,9 @@ for task_id, task_classes in enumerate(tasks, 1):
         
         print(f"{epoch}, train loss {train_loss:4f}, train acc {train_acc:4f}, val loss {val_loss:4f}, val acc {val_acc:4f}")
 
-        if train_acc > 0.95:
-            print("Accuracy larger than 0.95, breaking from training...")
+        thresh = 0.98
+        if train_acc > thresh:
+            print(f"Accuracy larger than {thresh}, breaking from training...")
             break
 
     # register a prototype gradient for the class
@@ -315,7 +340,70 @@ for task_id, task_classes in enumerate(tasks, 1):
     
     population_sparcity = (num_zeros / total_size) # total_size = n_examples * n_neurons
     print(f"Sparcity analysis - population sparcity: {population_sparcity:.4f}")
+   
+
+    #### test the strength of the representation
+    model.eval()
     
+    # compute total number of examples in val set
+    total = len(val_loader.dataset) # 2048 for first task
+    # get feature size
+    xb, yb, _, next(iter(val_loader))
+    _, latent = model(xb)
+    feat_dim = latent[1].shape[1] # 84
+
+    # preallocate
+    all_repr = np.zeros((total, feat_dim), dtype=np.float32)
+    all_labels = np.zeros(total, dtype=np.int64)
+
+    ptr = 0
+    with torch.no_grad():
+        for xb, yb, _ in val_loader:
+            bs = xb.size(0)
+            _, latent = model(xb)
+            arr = latent[1].cpu().numpy()
+
+            all_repr[ptr:ptr+bs] = arr
+            all_labels[ptr:ptr+bs] = yb.cpu().numpy()
+            ptr += bs
+
+    print("Using linear probing...")
+    x = all_repr
+    y = all_labels
+    
+    x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2, random_state=0)
+
+    clf = LogisticRegression(
+        penalty="l2",
+        C=1.0,
+        solver="lbfgs",
+        multi_class="multinomial",
+        max_iter=1000,
+        tol=1e-4,
+        n_jobs=-1
+    )
+    clf.fit(x_train, y_train)
+    acc = clf.score(x_test, y_test)
+    print(f"Linear probe overall acc: {acc:.4f}")
+    classifier_acc.append(acc)
+
+    y_pred = clf.predict(x_test)
+
+    seen_counts.append(len(seen))
+    for c in seen:
+        mask = (y_test == c)
+        if mask.sum() > 0:
+            acc_c = (y_pred[mask] == y_test[mask]).mean()
+            print(f"Class {c} accuracy on linear probing: {acc_c:.4f}")
+            
+            representation_strength[c].append(acc_c)
+
+    print_representation_strength_table(representation_strength, classifier_acc, len(classifier_acc))
+    plot_class_strength(representation_strength, seen_counts)
+
+    print("")
+
+
     # the current task becomes now the previous task
     previous = task_classes
 

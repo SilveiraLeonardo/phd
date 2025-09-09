@@ -60,13 +60,13 @@ def make_task_loader(full_ds, target_classes, batch_size=64, shuffle=True):
 
     return DataLoader(sub_ds, batch_size=batch_size, shuffle=shuffle)
 
-model = MLPSparse()
-#model = MLPSparseBN()
+#model = MLPSparse()
+model = MLPSparseBN()
 
 optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
 criterion = nn.CrossEntropyLoss()
 
-lambda_l1 = 0.0
+lambda_l1 = 1.0
 print(f"lambda L1: {lambda_l1}")
 
 # keep track of the classes seen so far
@@ -260,7 +260,8 @@ for task_id, task_classes in enumerate(tasks, 1):
     
     population_sparcity = (num_zeros / total_size) # total_size = n_examples * n_neurons
     print(f"Sparcity analysis - population sparcity: {population_sparcity:.4f}")
-    
+   
+    # analysis of the distribution of biases and weights
     weights = []
     biases = []
     biases1 = []
@@ -305,8 +306,8 @@ for task_id, task_classes in enumerate(tasks, 1):
     #                    color='C2',
     #               title=f"Bias Distribution - task {task_id} - std {bias_std:.4f}")
 
-    bias1_std = np.std(np.array(biases1))
-    bias2_std = np.std(np.array(biases2))
+    #bias1_std = np.std(np.array(biases1))
+    #bias2_std = np.std(np.array(biases2))
     #plot_two_histograms(biases1, biases2,
     #                    bins=40,
     #                    density=False,
@@ -314,7 +315,7 @@ for task_id, task_classes in enumerate(tasks, 1):
     #               titles=(f"Layer 1 - Bias Distribution - task {task_id} - std {bias1_std:.4f}",
     #                    f"Layer 2 - Bias Distribution - task {task_id} - std {bias2_std:.4f}"))
     
-    weights_std = np.std(np.array(weights))
+    #weights_std = np.std(np.array(weights))
     #plot_histogram(weights,
     #                    bins=40,
     #                    density=False,
@@ -324,9 +325,9 @@ for task_id, task_classes in enumerate(tasks, 1):
     #                    xlabel="Weight value"
     #               )
 
-    # the current task becomes now the previous task
-    previous = task_classes
+    # analysis of the accumulation of gradients
 
+    # if dont want the gradient accumulated, but the mean value
     #for idx in range(len(grad_integration_list)):
     #    grad_integration_list[idx] /= n_updates
 
@@ -334,6 +335,7 @@ for task_id, task_classes in enumerate(tasks, 1):
     plot_three_color_map(grad_integration_list[0], grad_integration_list[1], grad_integration_list[2])
 
     #### test the strength of the representation
+    model.eval()
     # compute total number of examples in val set
     total = len(val_loader.dataset) # 2048 for first task
 
@@ -420,3 +422,7 @@ for task_id, task_classes in enumerate(tasks, 1):
     print_representation_strength_table(representation_strength, classifier_acc, len(classifier_acc))
 
     print("")
+    
+    # the current task becomes now the previous task
+    previous = task_classes
+
