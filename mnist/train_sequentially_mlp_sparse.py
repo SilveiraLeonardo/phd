@@ -60,13 +60,15 @@ def make_task_loader(full_ds, target_classes, batch_size=64, shuffle=True):
 
     return DataLoader(sub_ds, batch_size=batch_size, shuffle=shuffle)
 
-#model = MLPSparse()
-model = MLPSparseBN()
+model = MLPSparse()
+#model = MLPSparseBN()
 
-optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
+weight_decay = 1e-2
+print(f"Weight decay: {weight_decay}")
+optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
 criterion = nn.CrossEntropyLoss()
 
-lambda_l1 = 1.0
+lambda_l1 = 0.0
 print(f"lambda L1: {lambda_l1}")
 
 # keep track of the classes seen so far
@@ -101,7 +103,10 @@ for task_id, task_classes in enumerate(tasks, 1):
     val_loader = make_task_loader(val_ds, seen, batch_size, shuffle=False)
     test_loader = make_task_loader(test_ds, seen, batch_size, shuffle=False)
 
-    one_loader = make_task_loader(val_ds, [1], batch_size, shuffle=False)
+    # loader to evaluate the forward transfer ability of the network
+    forward_transfer_loader = make_task_loader(val_ds, [9, 0], batch_size, shuffle=False)
+    # loader to evaluate the ability of the network to evaluate all classes
+    all_classes_loader = make_task_loader(val_ds, [1, 2, 3, 4, 5, 6, 7, 8, 9, 0], batch_size, shuffle=False)
     
     if previous is not None:
         curr_loader = make_task_loader(val_ds, task_classes, batch_size, shuffle=False)
@@ -338,9 +343,17 @@ for task_id, task_classes in enumerate(tasks, 1):
     model.eval()
     # compute total number of examples in val set
     total = len(val_loader.dataset) # 2048 for first task
+    #print("Attention: evaluating the representation strength for classes: [9, 0]")
+    #total = len(forward_transfer_loader.dataset)
+    #print("Attention: evaluating the representation strength for ALL classes")
+    #total = len(all_classes_loader.dataset)
 
     # get feature size
     xb, yb, _, next(iter(val_loader))
+    #print("Attention: evaluating the representation strength for classes: [9, 0]")
+    #xb, yb, _, next(iter(forward_transfer_loader))
+    #print("Attention: evaluating the representation strength for ALL classes")
+    #xb, yb, _, next(iter(all_classes_loader))
     _, latent = model(xb)
     feat_dim = latent[1].shape[1] # 84
 
@@ -353,6 +366,10 @@ for task_id, task_classes in enumerate(tasks, 1):
     ptr = 0
     with torch.no_grad():
         for xb, yb, _ in val_loader:
+        #print("Attention: evaluating the representation strength for classes: [9, 0]")
+        #for xb, yb, _ in forward_transfer_loader:
+        #print("Attention: evaluating the representation strength for ALL classes")
+        #for xb, yb, _ in all_classes_loader:
             bs = xb.size(0)
             _, latent = model(xb)
             arr = latent[1].cpu().numpy()
@@ -360,6 +377,15 @@ for task_id, task_classes in enumerate(tasks, 1):
             all_repr[ptr:ptr+bs] = arr
             all_labels[ptr:ptr+bs] = yb.cpu().numpy()
             ptr += bs
+
+    #print("Attention: evaluating the representation strength for classes: [9, 0]")
+    #tsne = TSNE(n_components=2, init='pca', random_state=42)
+    #latents_2d = tsne.fit_transform(all_repr)  # [N,2]
+    #plot_tsne(latents_2d, all_labels, title="MNIST latent space (2D) - Classes [9, 0]")
+    #print("Attention: evaluating the representation strength for ALL classes")
+    #tsne = TSNE(n_components=2, init='pca', random_state=42)
+    #latents_2d = tsne.fit_transform(all_repr)  # [N,2]
+    #plot_tsne(latents_2d, all_labels, title="MNIST latent space (2D) - All classes")
 
     #print(" ")
     #for c in seen:
@@ -374,7 +400,7 @@ for task_id, task_classes in enumerate(tasks, 1):
     print("Using linear probing...")
     x = all_repr
     y = all_labels
-    
+
     x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2, random_state=0)
 
     clf = LogisticRegression(
@@ -411,6 +437,12 @@ for task_id, task_classes in enumerate(tasks, 1):
 
     seen_counts.append(len(seen))
     for c in seen:
+    #print("Attention: evaluating the representation strength for classes: [9, 0]")
+    #seen_counts.append(2)
+    #for c in [9, 0]:
+    #print("Attention: evaluating the representation strength for ALL classes")
+    #seen_counts.append(10)
+    #for c in [1, 2, 3, 4, 5, 6, 7, 8, 9, 0]:
         mask = (y_test == c)
         if mask.sum() > 0:
             acc_c = (y_pred[mask] == y_test[mask]).mean()
@@ -422,7 +454,7 @@ for task_id, task_classes in enumerate(tasks, 1):
     print_representation_strength_table(representation_strength, classifier_acc, len(classifier_acc))
 
     print("")
-    
+
     # the current task becomes now the previous task
     previous = task_classes
 

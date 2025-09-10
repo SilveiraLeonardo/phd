@@ -477,8 +477,10 @@ def plot_class_strength(representation_strength, seen_counts):
         start_idx = num_tasks - len(acc_list)
         x = seen_counts[start_idx:]
         plt.plot(x, acc_list, marker="o", label=f"class {c}")
+        #plt.plot(range(len(seen_counts)), acc_list, marker="o", label=f"class {c}")
     
-    plt.xlabel('Number of classes seen so far')
+    #plt.xlabel('Number of classes seen so far')
+    plt.xlabel('Tasks trained so far')
     plt.ylabel('Linear‐probe accuracy')
     plt.title('Evolution of representation strength per class')
     plt.legend(ncol=2, fontsize='small')
@@ -489,7 +491,7 @@ def print_representation_strength_table(representation_strength, classifier_acc,
 
     # 1) Print header
     header = "| Accuracy    | " + " | ".join(f"Task {i+1}" for i in range(num_tasks)) + " |"
-    sep    = "|------------|" + "|".join( "--------- " for _ in range(num_tasks)) + "|"
+    sep    = "|------------|" + "|".join( "------- " for _ in range(num_tasks)) + "|"
 
     print(header)
     print(sep)
