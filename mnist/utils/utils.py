@@ -308,8 +308,10 @@ def plot_color_map(data1, data2, title1="Hidden 1", title2="Hidden 2"):
 
     plt.show()
 
-def plot_three_color_map(data1, data2, data3, title1="Layer 1", title2="Layer 2", title3="Layer 3"):
-
+def plot_three_color_map(data1, data2, data3, title1="Layer 1", title2="Layer 2", title3="Layer 3", same_scale=False):
+    
+    cmap = plt.get_cmap('RdBu_r')
+    
     # Heat map
     fig, (ax1, ax2, ax3) = plt.subplots(
         nrows=3, 
@@ -317,31 +319,101 @@ def plot_three_color_map(data1, data2, data3, title1="Layer 1", title2="Layer 2"
         figsize=(6,10), 
         constrained_layout=True)
 
-    # use the same vmin and vmax colors to be comparable
-    #vmin = min(data1.min(), data2.min(), data3.min())
-    #vmax = max(data1.max(), data2.max(), data3.max())
+    if same_scale:
+        # use the same vmin and vmax colors to be comparable
+        vmin = min(data1.min(), data2.min(), data3.min())
+        vmax = max(data1.max(), data2.max(), data3.max())
 
-    im1 = ax1.imshow(data1, aspect="auto")
-    ax1.set_title(title1)
+        im1 = ax1.imshow(data1, vmin=vmin, vmax=vmax, cmap=cmap, aspect="auto")
+        ax1.set_title(title1)
 
-    im2 = ax2.imshow(data2,  aspect="auto")
-    ax2.set_title(title2)
+        im2 = ax2.imshow(data2, vmin=vmin, vmax=vmax, cmap=cmap, aspect="auto")
+        ax2.set_title(title2)
+        
+        im3 = ax3.imshow(data3, vmin=vmin, vmax=vmax, cmap=cmap, aspect="auto")
+        ax3.set_title(title3)
     
-    im3 = ax3.imshow(data3,  aspect="auto")
-    ax3.set_title(title3)
-    
-    #ax1.set_ylabel("Batch samples")
-    #ax1.set_xlabel("Latent vector")
+        # Add the color bar
+        cbar = fig.colorbar(im2, ax = [ax1, ax2], orientation="vertical", fraction=0.02, pad=0.04)
+        cbar.ax.set_ylabel("Shared color bar", rotation = -90, va = "bottom")
+    else:
+        im1 = ax1.imshow(data1, aspect="auto")
+        ax1.set_title(title1)
 
-    #ax2.set_ylabel("Batch samples")
-    #ax2.set_xlabel("Latent vector")
+        im2 = ax2.imshow(data2, aspect="auto")
+        ax2.set_title(title2)
+        
+        im3 = ax3.imshow(data3, aspect="auto")
+        ax3.set_title(title3)
     
-    # Add the color bar
-    fig.colorbar(im1, ax = [ax1], orientation="vertical", fraction=0.02, pad=0.04)
-    fig.colorbar(im2, ax = [ax2], orientation="vertical", fraction=0.02, pad=0.04)
-    fig.colorbar(im3, ax = [ax3], orientation="vertical", fraction=0.02, pad=0.04)
+        #ax1.set_ylabel("Batch samples")
+        #ax1.set_xlabel("Latent vector")
+
+        #ax2.set_ylabel("Batch samples")
+        #ax2.set_xlabel("Latent vector")
+        
+        # Add the color bar
+        fig.colorbar(im1, ax = [ax1], orientation="vertical", fraction=0.02, pad=0.04)
+        fig.colorbar(im2, ax = [ax2], orientation="vertical", fraction=0.02, pad=0.04)
+        fig.colorbar(im3, ax = [ax3], orientation="vertical", fraction=0.02, pad=0.04)
 
     plt.show()
+
+def plot_weight_and_biases(weights, biases, titles=None, cmap='RdBu_r'):
+    n = len(weights)
+    if titles is None:
+        titles = [f"Layer {i+1}" for i in range(n)]
+
+    # compute global vmin/vmax over all weights
+    all_w = np.concatenate([w.ravel() for w in weights])
+    vmin, vmax = all_w.min(), all_w.max()
+
+    # make a n×2 grid, with a wide column for weights and a narrow for biases
+    fig, axes = plt.subplots(n, 2,
+                             figsize=(8, 3*n),
+                             gridspec_kw={'width_ratios': [4, 1]},
+                             constrained_layout=True)
+
+    # if n==1 then axes has shape (2,) instead of (1,2)
+    if n == 1:
+        axes = axes[np.newaxis, :]
+
+    for i, (w, b) in enumerate(zip(weights, biases)):
+        ax_w, ax_b = axes[i]
+
+        # ---- weight heatmap ----
+        im = ax_w.imshow(w,
+                         cmap=cmap,
+                         vmin=vmin,
+                         vmax=vmax,
+                         aspect='auto')
+        ax_w.set_title(f"{titles[i]} – weights")
+        ax_w.set_ylabel("output dims")
+        ax_w.set_xlabel("input dims")
+
+        # ---- bias bar plot ----
+        # horizontal barh so we line up rows with the heatmap y-axis
+        ax_b.barh(np.arange(len(b)), b, color='gray')
+        ax_b.set_title(f"{titles[i]} – bias")
+        ax_b.set_xlim(b.min(), b.max())
+        # invert y so bar index 0 is at top, matching the heatmap row 0
+        ax_b.invert_yaxis()
+        # remove extra ticks
+        ax_b.set_xticks([])
+        ax_b.set_yticks([])
+
+    # global colorbar for the weight heatmaps
+    fig.colorbar(im,
+                 ax=[axes[j][0] for j in range(n)],
+                 orientation='vertical',
+                 fraction=0.02,
+                 pad=0.04,
+                 label="weight value")
+
+    plt.show()
+ 
+
+
 
 def plot_histogram(biases,
                         bins=50,

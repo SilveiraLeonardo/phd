@@ -18,7 +18,7 @@ seed = 42
 
 # parameters
 lr = 1e-3
-epochs = 5
+epochs = 15
 batch_size = 64
 n_val = 10000 # size of validation set
 normalize_mean = 0.1307
@@ -123,6 +123,8 @@ for task_id, task_classes in enumerate(tasks, 1):
                 continue
             grad_biases_integration_list.append(torch.zeros_like(param.data))
 
+    print(f"lambda l1: {lambda_l1}")
+
     for epoch in range(epochs):
     
         model.train()
@@ -134,15 +136,22 @@ for task_id, task_classes in enumerate(tasks, 1):
 
         for xb, yb, _ in train_loader:
 
+            n = xb.size(0) # batch size
+
             n_updates += 1
 
             optimizer.zero_grad()
             
             logits, (h1, h2) = model(xb)
-            base_loss = criterion(logits, yb)
 
+            #base_loss = criterion(logits, yb)
+            base_loss = -torch.log(F.sigmoid(logits[range(n), yb])).sum()/n
+            
             # compute the l1 norm for the activations
-            l1_norm = (h1.abs().mean() + h2.abs().mean())
+            #l1_norm = (h1.abs().mean() + h2.abs().mean())
+            l1_norm = 0.0
+            for param in model.parameters():
+                l1_norm += param.data.norm()
 
             loss = base_loss + lambda_l1 * l1_norm
 
@@ -164,7 +173,7 @@ for task_id, task_classes in enumerate(tasks, 1):
                 elif param.ndim == 1:
                     if name.find("weight") != -1:
                         continue
-                    grad_biases_integration_list[j] += param.data
+                    grad_biases_integration_list[j] += param.grad
                     j += 1
 
             # in the first epoch, plot acc of current and previous task on a batch basis
@@ -484,4 +493,5 @@ for task_id, task_classes in enumerate(tasks, 1):
 
     # the current task becomes now the previous task
     previous = task_classes
+    lambda_l1 += 0.5
 

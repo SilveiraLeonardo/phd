@@ -1,4 +1,4 @@
-from utils.utils import plot_random_digits, plot_batch_with_preds, load_mnist_and_generate_splits, plot_tsne, plot_color_map, plot_histogram
+from utils.utils import plot_random_digits, plot_batch_with_preds, load_mnist_and_generate_splits, plot_tsne, plot_color_map, plot_histogram, plot_weight_and_biases
 from models.models import MLPSparse 
 from datasets.datasets import FlatMNISTDataset
 import torch
@@ -168,3 +168,18 @@ population_sparcity = (num_zeros / total_size) # total_size = n_examples * n_neu
 print(f"Sparcity analysis - population sparcity: {population_sparcity:.4f}")
 
 
+# plot parameters of the neural network
+model_weigths = []
+model_biases = []
+for name, param in model.named_parameters():
+    if param.ndim == 2:
+        model_weigths.append(param.data.detach().cpu().numpy())
+    elif param.ndim == 1:
+        if name.find("weight") != -1:
+            print("bn weight, skipping... we will keep only the bn bias")
+            continue
+        model_biases.append(param.data.detach().cpu().numpy())
+        if param.numel() == 10: # number of out classes
+            print("Classification bias vector:")
+            print(param)
+plot_weight_and_biases(model_weigths, model_biases)
