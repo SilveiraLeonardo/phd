@@ -14,6 +14,60 @@ from torch.utils.data import DataLoader, Subset
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 
+# orthogonal gradient descen
+class OGDProjector:
+    def __init__(self, model, eps=1e-8):
+        self.model = model
+        # list of torch tensors, each is a unit-norm flattened gradient
+        self.basis = []
+        self.eps = eps
+
+    def __len__(self):
+        return len(self.basis)
+    
+    def _flatten_grads(self):
+        flats = []
+        for p in self.model.parameters():
+            if p.grad is not None:
+                flats.append(p.grad.detach().view(-1))
+        if len(flats) == 0:
+            return None
+        return torch.cat(flats)
+
+    def register_task_gradients(self):
+        # call after finishing a task
+        g = self._flatten_grads()
+        if g is None:
+            return
+        # Gram-Schmidt against existing basis
+        for b in self.basis:
+            # for each basis vector
+            # subtract from g the components in the direction of b, for each b
+            # so that the vectors in g only have the orthogonal components now
+            g -= b * (b @ g)
+        ng = g.norm()
+        if ng.item() > self.eps:
+            self.basis.append(g / ng)
+
+    def project_current_gradients(self):
+        # call after loss.backward() and before optimizer.step()
+        grads = self._flatten_grads()
+        if grads is None or len(self.basis) == 0:
+            return
+        # project grads onto orthogonal complement of the basis
+        g = grads.clone()
+        for b in self.basis:
+            g -= b * (b @ g)
+
+        # write g back into parameter gradients
+        idx = 0
+        for p in self.model.parameters():
+            if p.grad is not None:
+                numel = p.grad.numel() # total number of elements in the tensor
+                new_grad = g[idx:idx+numel].view_as(p.grad)
+                p.grad.data.copy_(new_grad)
+                idx += numel
+
 seed = 42
 
 # parameters
@@ -63,6 +117,8 @@ def make_task_loader(full_ds, target_classes, batch_size=64, shuffle=True):
 #model = MLPSparse()
 model = MLPSparseBN()
 
+ogd = OGDProjector(model)
+
 weight_decay = 1e-5 #1e-2
 print(f"Weight decay: {weight_decay}")
 optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
@@ -78,7 +134,7 @@ optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_dec
 
 criterion = nn.CrossEntropyLoss()
 
-lambda_l1 = 0.0007
+lambda_l1 = 0.001
 print(f"lambda L1: {lambda_l1}")
 
 # keep track of the classes seen so far
@@ -204,7 +260,57 @@ for task_id, task_classes in enumerate(tasks, 1):
             loss = base_loss + lambda_l1 * l1_norm
 
             loss.backward()
+
+            # OGD project the main gradient
+            ogd.project_current_gradients()
+
             optimizer.step()
+
+            # reduce over confidence in wrong logits
+            neg_threshold = 0.5
+            neg_lr = 1e-3
+            
+            probs = torch.sigmoid(logits)
+
+            for c in range(10):
+                if c in task_classes:
+                    continue
+
+                # find which samples in the batch are over-confident on class c
+                mask = probs[:, c] > neg_threshold
+                if not mask.any():
+                    continue
+
+                # zero out any existing gradient
+                optimizer.zero_grad()
+
+                # loss: sum over the selected examples
+                loss_c = logits[mask, c].sum()
+                loss_c.backward()
+
+                # pull out the flattened gradients
+                flat_g = ogd._flatten_grads()
+                if flat_g is None:
+                    continue
+
+                # orthogonally project into your basis
+                g_proj = flat_g.clone()
+                for b in ogd.basis:
+                    g_proj -= b * (b @ g_proj)
+
+                # take a small negative step along g_proj
+                # to decrease over-confident logits
+                idx = 0
+                with torch.no_grad:
+                    for p in model.parameters():
+                        if p.grad is None:
+                            continue
+                        n = p.numel()
+                        g_piece = g_proj[idx:idx+n].view_as(p)
+                        p.data -= neg_lr * g_piece
+                        idx += n
+                        
+                optimizer.zero_grad()
 
             tot_loss += loss.item() * xb.size(0)
             preds = logits.argmax(dim = 1)
@@ -299,6 +405,52 @@ for task_id, task_classes in enumerate(tasks, 1):
             print("Accuracy larger than 0.98, breaking from training...")
             break
 
+    # update basis of gradient vectors
+    model.train()
+    
+    print("registering gradients for the task")
+    running_g = {c: None for c in task_classes}
+    counts = {c: 0 for c in task_classes}
+
+    for idx, (xb, yb, _) in enumerate(train_loader):
+
+        for c in task_classes:
+            mask = (yb == c)
+            if not mask.any():
+                continue
+
+            optimizer.zero_grad()
+            logits, _ = model(xb)
+       
+            # sum of the correct class logits over the minibatch
+            loss_c = logits[mask, c].sum()
+            # backward
+            loss_c.backward()
+
+            flat_g = ogd._flatten_grads()
+            if flat_g is not None:
+                if running_g[c] is None:
+                    running_g[c] = flat_g.clone()
+                else:
+                    running_g[c] += flat_g
+                count += 1
+
+    for c in task_classes:
+        if counts[c] == 0:
+            continue
+
+        g = running_g[c] / float(counts[c])
+
+        # Gram-Schmidt
+        for b in ogd.basis:
+            g -= b * (b @ g)
+        ng = g.norm()
+        if ng > ogd.eps:
+           ogd.basis.append(g / ng)
+
+    print(f"{len(ogd)} gradients stored")
+
+    model.eval()
 
     xb, yb, xb_images = next(iter(test_loader))
     with torch.no_grad():
